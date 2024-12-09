@@ -17,6 +17,11 @@ class User(BaseModel):
 
 
 def connect_db():
+    """_summary_
+
+    Returns:
+        _type_: _description_
+    """
     conn = psycopg2.connect(DATABASE_URL)
     return conn
 
@@ -39,6 +44,18 @@ def startup():
 
 @app.post("/register", status_code=201)
 def register_user(user: User):
+    """_summary_
+
+    Args:
+        user (User): _description_
+
+    Raises:
+        HTTPException: _description_
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
     conn = connect_db()
     cursor = conn.cursor()
     try:
@@ -63,6 +80,14 @@ def register_user(user: User):
 
 @app.get("/users", status_code=200)
 def get_user():
+    """_summary_
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
     conn = connect_db()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
@@ -80,3 +105,4 @@ def get_user():
 #     print('успех')
 # except:
 #     print('не успех')
+
