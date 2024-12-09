@@ -1,108 +1,69 @@
-from http.client import HTTPException
-
-from fastapi import FastAPI, HTTPException
-
-from pydantic import BaseModel
+import asyncio
 import psycopg2
-import psycopg2.extras
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 app = FastAPI()
 
-DATABASE_URL = ""
-
+DATABASE_URL = "postgresql://new_user:0000@db/new_database"
 
 class User(BaseModel):
     username: str
     email: str
 
-
-def connect_db():
-    """_summary_
-
-    Returns:
-        _type_: _description_
-    """
-    conn = psycopg2.connect(DATABASE_URL)
-    return conn
-
+async def connect_db():
+    for _ in range(5):  # Попытаемся подключиться 5 раз
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            return conn
+        except psycopg2.OperationalError:
+            print("Не удалось подключиться к базе данных. Повторная попытка через 5 секунд...")
+            await asyncio.sleep(5)
+    raise Exception("Не удалось подключиться к базе данных после 5 попыток")
 
 @app.on_event("startup")
-def startup():
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    username varchar(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE
-    );
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
-
+async def startup():
+    try:
+        conn = await connect_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username varchar(255) NOT NULL,
+        email VARCHAR(255) NOT NULL UNIQUE
+        );
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error during startup: {e}")
+        raise
 
 @app.post("/register", status_code=201)
-def register_user(user: User):
-    """_summary_
-
-    Args:
-        user (User): _description_
-
-    Raises:
-        HTTPException: _description_
-        HTTPException: _description_
-
-    Returns:
-        _type_: _description_
-    """
-    conn = connect_db()
-    cursor = conn.cursor()
+async def register_user(user: User):
     try:
-        cursor.execute("SELECT * FROM users WHERE email = %s", (user.email,))
-        existing_user = cursor.fetchone()
-
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
-
-
-        cursor.execute("INSERT INTO users (username, email) VALUES (%s, %s)", (user.username, user.email))
+        conn = await connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO users (username, email) VALUES (%s, %s)",
+            (user.username, user.email)
+        )
         conn.commit()
-        return {"message": "Пользователь успешно зарегистрирован"}
-
-    except psycopg2.IntegrityError:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail="Невалидная почта")
-    finally:
         cursor.close()
         conn.close()
-
-
-@app.get("/users", status_code=200)
-def get_user():
-    """_summary_
-
-    Raises:
-        HTTPException: _description_
-
-    Returns:
-        _type_: _description_
-    """
-    conn = connect_db()
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    try:
-        cursor.execute("SELECT * FROM users")
-        users = cursor.fetchall()
+        return {"message": "User created successfully"}
+    except psycopg2.errors.UniqueViolation:
+        raise HTTPException(status_code=400, detail="Email already exists")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
-    return {"users": [dict(user) for user in users]}
 
-# try:
-#     con = psycopg2.connect(DATABASE_URL)
-#     print('успех')
-# except:
-#     print('не успех')
-
+@app.get("/users", status_code=200)
+async def get_user():
+    conn = await connect_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users")
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {"users": [dict(zip(["id", "username", "email"], user)) for user in users]}

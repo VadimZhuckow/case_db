@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: new_database
+      POSTGRES_USER: new_user
+      POSTGRES_PASSWORD: 0000
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U new_user -d new_database"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    environment:
+      - DATABASE_URL=postgresql://new_user:0000@db/new_database
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge
